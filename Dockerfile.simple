@@ -2,9 +2,9 @@
 # Simple production-ready image without obfuscation
 # Supports both AMD64 and ARM64 architectures
 
-# Using ECR Public mirror of official Python image per Amazon security guidelines
-# See: https://gallery.ecr.aws/docker/library/python
-FROM public.ecr.aws/docker/library/python:3.12-slim
+# Official Python image from Docker Hub
+# ECR Public mirror (public.ecr.aws/docker/library/python) can also be used
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -33,15 +33,14 @@ RUN groupadd -r appuser && \
 WORKDIR /app
 
 # Copy and install Python dependencies
-COPY requirements_docker.txt ./
+COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements_docker.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
     rm -rf /root/.cache /tmp/* /var/tmp/*
 
 # Copy application source code
 COPY src/ ./src/
 COPY .env.example ./
-COPY health_check.py ./
 
 # Create application directories
 RUN mkdir -p /app/logs /app/tmp && \
@@ -62,7 +61,7 @@ LABEL maintainer="SAP ABAP-Accelerator Team" \
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python /app/health_check.py || exit 1
+    CMD python /app/src/aws_abap_accelerator/health_check.py || exit 1
 
 # Start the server
-CMD ["python", "src/enterprise_main.py"]
+CMD ["python", "src/aws_abap_accelerator/enterprise_main.py"]
