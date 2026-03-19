@@ -28,7 +28,8 @@ class ServiceDefinitionHandler:
         name: str,
         description: str,
         package_name: str,
-        source_code: str = ""
+        source_code: str = "",
+        transport_request: Optional[str] = None
     ) -> bool:
         """
         Create a Service Definition (SRVD) following TypeScript pattern:
@@ -55,6 +56,8 @@ class ServiceDefinitionHandler:
             
             # Step 2: Create the service definition
             url = f'/sap/bc/adt/ddic/srvd/sources?sap-client={self.sap_client.connection.client}'
+            if transport_request:
+                url += f'&corrNr={quote(transport_request)}'
             
             logger.info(sanitize_for_logging(f'Creating Service Definition at URL: {url}'))
             logger.info(sanitize_for_logging(f'Service Definition XML: {object_xml}'))
