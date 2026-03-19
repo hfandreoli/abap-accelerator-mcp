@@ -394,15 +394,15 @@ def build_object_xml(object_name: str, object_type: str, description: str = "",
       
     elif object_type_upper == 'TABL':
         return f'''<?xml version="1.0" encoding="UTF-8"?>
-<blue:ddicTable xmlns:blue="http://www.sap.com/adt/ddic/tables" xmlns:adtcore="http://www.sap.com/adt/core" adtcore:type="TABL/DT" adtcore:description="{safe_description}" adtcore:name="{safe_name}" adtcore:masterLanguage="EN" adtcore:responsible="{safe_username}">
+<blue:blueSource xmlns:adtcore="http://www.sap.com/adt/core" xmlns:blue="http://www.sap.com/wbobj/blue" adtcore:type="TABL/DT" adtcore:description="{safe_description}" adtcore:language="EN" adtcore:name="{safe_name}" adtcore:masterLanguage="EN" adtcore:responsible="{safe_username}">
   <adtcore:packageRef adtcore:name="{safe_package}"/>
-</blue:ddicTable>'''
+</blue:blueSource>'''
       
     elif object_type_upper == 'STRU':
         return f'''<?xml version="1.0" encoding="UTF-8"?>
-<blue:ddicStructure xmlns:blue="http://www.sap.com/adt/ddic/structures" xmlns:adtcore="http://www.sap.com/adt/core" adtcore:type="STRU/DS" adtcore:description="{safe_description}" adtcore:name="{safe_name}" adtcore:masterLanguage="EN" adtcore:responsible="{safe_username}">
+<blue:blueSource xmlns:adtcore="http://www.sap.com/adt/core" xmlns:blue="http://www.sap.com/wbobj/blue" adtcore:type="STRU/DS" adtcore:description="{safe_description}" adtcore:language="EN" adtcore:name="{safe_name}" adtcore:masterLanguage="EN" adtcore:responsible="{safe_username}">
   <adtcore:packageRef adtcore:name="{safe_package}"/>
-</blue:ddicStructure>'''
+</blue:blueSource>'''
     
     elif object_type_upper == 'DDLS':
         return f'''<?xml version="1.0" encoding="UTF-8"?>
