@@ -24,5 +24,7 @@
 cdk.out
 **/data/**.csv
 
+__pycache__/
 .env
 
+mcp-server.log

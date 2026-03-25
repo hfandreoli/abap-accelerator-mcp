@@ -147,11 +147,54 @@ class ABAPAcceleratorServer:
                 'methods': methods,
                 'transport_request': transport_request
             })
+
+        # Create data element tool
+        @self.mcp.tool()
+        async def aws_abap_cb_create_data_element(
+            name: str,
+            description: str,
+            package_name: Optional[str] = None,  # Optional - defaults to $TMP
+            domain_name: Optional[str] = None,
+            data_type: Optional[str] = None,
+            length: Optional[int] = None,
+            decimals: Optional[int] = None,
+            short_label: Optional[str] = None,
+            medium_label: Optional[str] = None,
+            long_label: Optional[str] = None,
+            heading_label: Optional[str] = None,
+            transport_request: Optional[str] = None,
+        ) -> str:
+            """Create new Data Element in SAP system
+            
+            Returns:
+                Success/error message
+            """
+            return await self.tool_handlers.handle_create_object({
+                'name': name,
+                'type': 'DTEL',
+                'description': description,
+                'package_name': package_name or "$TMP",  # Default to $TMP if not provided
+                'domain_name': domain_name,
+                'data_type': data_type,
+                'length': length,
+                'decimals': decimals,
+                'short_label': short_label,
+                'medium_label': medium_label,
+                'long_label': long_label,
+                'heading_label': heading_label,
+                'transport_request': transport_request
+            })
         
         # Get source tool
         @self.mcp.tool()
         async def aws_abap_cb_get_source(object_name: str, object_type: str, explanation: Optional[str] = None) -> Dict[str, Any]:
             """Get source code of ABAP object"""
+            return await self.tool_handlers.handle_get_source(object_name, object_type)
+
+        # Get source tool
+        @self.mcp.tool()
+        async def aws_abap_cb_get_data_element_info(object_name: str, object_type: str, explanation: Optional[str] = None) -> Dict[str, Any]:
+            """Get source code of a Data Elemeent"""
             return await self.tool_handlers.handle_get_source(object_name, object_type)
         
         # Update source tool

@@ -39,7 +39,7 @@ from sap_types.sap_types import (
     TableTypeInfo, SearchHelpInfo, ViewInfo, LockObjectInfo, CreateDataElementRequest,
     CreateDomainRequest, CreateTableRequest, CreateStructureRequest, CreateTableTypeRequest,
     CreateSearchHelpRequest, CreateViewRequest, CreateLockObjectRequest, DDICOperationResult,
-    SeverityType
+    SeverityType, ObjectType
 )
 from utils.logger import rap_logger
 from utils.security import (
@@ -504,7 +504,8 @@ class SAPADTClient:
                 'x-sap-adt-sessiontype': 'stateful',
                 'x-csrf-token': 'fetch',
                 'Accept': 'application/atomsvc+xml, application/xml, text/xml, */*',
-                'User-Agent': 'ABAP-Accelerator-MCP-Server/1.0.0'
+                'User-Agent': 'ABAP-Accelerator-MCP-Server/1.0.0',
+                'Accept-language': self.connection.language or 'EN'  # Use connection language or default to English
             }
             
             async with self.session.get(discovery_url, auth=auth, headers=headers) as response:
@@ -1081,6 +1082,10 @@ class SAPADTClient:
             if object_type.upper() == 'PROG' and is_include_program(validated_object_name):
                 print(f"[SAP-CLIENT] Include program detected, using include endpoint")
                 return await self._get_include_source(validated_object_name)
+
+            if object_type.upper() == 'DTEL':
+                result = await self.get_data_element_info(validated_object_name)
+                return result.model_dump_json()
             
             # For classes, try to get both main source and implementations
             main_source = None
@@ -5822,10 +5827,17 @@ class SAPADTClient:
         """Get detailed data element information"""
         try:
             url = f"/sap/bc/adt/ddic/dataelements/{quote(data_element_name)}"
+
+            print(f"[SAP-CLIENT] Trying discovered source URL: {sanitize_for_logging(url)}")
+            logger.info(f"Trying to get source from URL: {sanitize_for_logging(url)}")
+                    
+            headers = await self._get_appropriate_headers()
+            headers['Accept'] = 'application/vnd.sap.adt.dataelements.v2+xml'
             
-            async with self.session.get(url) as response:
+            async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     xml_content = await response.text()
+                    print(f"[SAP-CLIENT] Main source retrieved successfully, length: {validate_numeric_input(len(xml_content), 'length')}")
                     return self._parse_data_element_info_xml(xml_content)
                 else:
                     logger.error(f"Failed to get data element info: {response.status}")
@@ -5841,78 +5853,193 @@ class SAPADTClient:
             root = safe_parse_xml(xml_content)
             if root is None:
                 return None
+
+            ns_core = '{http://www.sap.com/adt/core}'
+            ns_dtel = '{http://www.sap.com/adt/dictionary/dataelements}'
             
-            name = root.get('name', '')
-            description = root.get('description', '')
-            package_name = root.get('package', '')
-            domain_name = root.get('domainName', '')
-            data_type = root.get('dataType', '')
-            
+            name = root.get(ns_core+'name', '')
+            description = root.get(ns_core+'description', '')
+            created_by = root.get(ns_core+'createdBy', '')
+            created_at = root.get(ns_core+'createdAt', '')
+            changed_by = root.get(ns_core+'changedBy', '')
+            changed_at = root.get(ns_core+'changedAt', '')
+
+            package_elem = root.find(ns_core+'packageRef')
+            package_name = package_elem.get(ns_core+'name', '') if package_elem is not None else ''
+
+            dtel_elem = root.find(ns_dtel+'dataElement')
+
+            domain_name_elem = dtel_elem.find(ns_dtel+'typeName')
+            domain_name = domain_name_elem.text.strip() if domain_name_elem and domain_name_elem.text else ''
+
+            data_type_elem = dtel_elem.find(ns_dtel+'dataType')
+            data_type = data_type_elem.text.strip() if data_type_elem and data_type_elem.text else ''
+
+            length_elem = dtel_elem.find(ns_dtel+'dataTypeLength')
+            length = length_elem.text.strip() if length_elem and length_elem.text else ''
+
+            decimals_elem = dtel_elem.find(ns_dtel+'dataTypeDecimals')
+            decimals = decimals_elem.text.strip() if decimals_elem and decimals_elem.text else ''
+
+            short_label_elem = dtel_elem.find(ns_dtel+'shortFieldLabel')
+            short_label = short_label_elem.text.strip() if short_label_elem and short_label_elem.text else ''
+
+            medium_label_elem = dtel_elem.find(ns_dtel+'mediumFieldLabel')
+            medium_label = medium_label_elem.text.strip() if medium_label_elem and medium_label_elem.text else ''
+
+            long_label_elem = dtel_elem.find(ns_dtel+'longFieldLabel')
+            long_label = long_label_elem.text.strip() if long_label_elem and long_label_elem.text else ''
+
+            heading_label_elem = dtel_elem.find(ns_dtel+'headingFieldLabel')
+            heading_label = heading_label_elem.text.strip() if heading_label_elem and heading_label_elem.text else ''
+
+            field_labels = {
+                "short": short_label,
+                "medium": medium_label,
+                "long": long_label,
+                "heading": heading_label
+            }
+
             return DataElementInfo(
                 name=name,
                 description=description,
                 package_name=package_name,
                 domain_name=domain_name,
-                data_type=data_type
+                data_type=data_type,
+                length=length,
+                decimals=decimals,
+                field_labels=field_labels,
+                created_by=created_by,
+                created_at=created_at,
+                changed_by=changed_by,
+                changed_at=changed_at
             )
                     
         except Exception as e:
             logger.error(f"Error parsing data element info XML: {sanitize_for_logging(str(e))}")
             return None
     
-    async def create_data_element(self, request: CreateDataElementRequest) -> DDICOperationResult:
+    async def create_data_element(self, request: CreateDataElementRequest) -> ObjectOperationResult:
         """Create a new data element"""
         try:
+            
+            object_request = CreateObjectRequest(
+                name=request.name,
+                type=ObjectType.DTEL,
+                description=request.description,
+                package_name=request.package_name,
+            )
+
+
+            # Step 0: Validate object name and get transport information
+            validation_result = await self._validate_object_name_and_get_transport(object_request)
+            if not validation_result.get('valid', False):
+                error_msg = validation_result.get('error', 'Object validation failed')
+                logger.info(f"Object validation was not successful: {error_msg} - continuing with object creation")
+                
+                # For $TMP package or if validation fails, try to proceed anyway
+                if (request.package_name and request.package_name.upper() == "$TMP") or not request.package_name:
+                    logger.info("Proceeding with $TMP package despite validation issue")
+                    request.package_name = "$TMP"
+                else:
+                    logger.info("Validation had issues but proceeding with object creation anyway")
+                    # Don't fail immediately - let the actual creation attempt handle it
+            else:
+                # Update request with validated transport if available
+                if validation_result.get('transport_number') and not request.transport_request:
+                    request.transport_request = validation_result['transport_number']
+                    logger.info(f"Using transport from validation: {sanitize_for_logging(request.transport_request)}")
+
+
             logger.info(f"Creating data element {sanitize_for_logging(request.name)}")
             
             data_element_xml = self._build_data_element_xml(request)
+
+            # await self._get_csrf_token()
             
             url = "/sap/bc/adt/ddic/dataelements"
-            headers = {'Content-Type': 'application/vnd.sap.adt.dataelements.v2+xml'}
+            if request.transport_request:
+                    url += f"?corrNr={quote(request.transport_request)}"
+            headers = await self._get_appropriate_headers()
+            headers['Accept'] = '*/*'
+            headers['Content-Type'] = 'application/vnd.sap.adt.dataelements.v2+xml'
+
             if self.csrf_token:
                 headers['X-CSRF-Token'] = self.csrf_token
             
             async with self.session.post(url, data=data_element_xml, headers=headers) as response:
                 if response.status in [200, 201]:
                     logger.info(f"Successfully created data element {sanitize_for_logging(request.name)}")
-                    return DDICOperationResult(
-                        success=True,
-                        object_name=request.name,
-                        object_type="DTEL",
-                        created=True,
-                        message=f"Data element {request.name} created successfully"
-                    )
+                    created = True
+                    
                 else:
                     error_msg = f"Failed to create data element: HTTP {response.status}"
+                    created = False
                     logger.error(error_msg)
-                    return DDICOperationResult(
-                        success=False,
-                        message=error_msg,
-                        errors=[error_msg]
-                    )
+
+            activation_result = None
+            if created:
+                activation_result = await self._activate_object_with_details(request.name, "DTEL")
+                
+            return ObjectOperationResult(
+                    created=created,
+                    syntax_check_passed=False,
+                    activated=activation_result.activated if activation_result else False,
+                    errors=[error_msg] if not created else [],
+                    warnings=[]
+                )
+          
                     
         except Exception as e:
             error_msg = f"Error creating data element: {sanitize_for_logging(str(e))}"
             logger.error(error_msg)
-            return DDICOperationResult(
-                success=False,
-                message=error_msg,
-                errors=[str(e)]
-            )
+            return ObjectOperationResult(
+                    created=False,
+                    syntax_check_passed=False,
+                    activated=False,
+                    errors=[error_msg],
+                    warnings=[]
+                )
     
     def _build_data_element_xml(self, request: CreateDataElementRequest) -> str:
         """Build data element XML for creation"""
-        return f"""<?xml version="1.0" encoding="UTF-8"?>
-        <dtel:dataElement xmlns:dtel="http://www.sap.com/adt/dataelements"
-                         xmlns:adtcore="http://www.sap.com/adt/core"
-                         adtcore:name="{sanitize_for_xml(request.name)}"
-                         adtcore:description="{sanitize_for_xml(request.description)}"
-                         adtcore:package="{sanitize_for_xml(request.package_name)}">
-            {f'<dtel:domainName>{sanitize_for_xml(request.domain_name)}</dtel:domainName>' if request.domain_name else ''}
-            {f'<dtel:dataType>{sanitize_for_xml(request.data_type)}</dtel:dataType>' if request.data_type else ''}
-            {f'<dtel:length>{request.length}</dtel:length>' if request.length else ''}
-            {f'<dtel:decimals>{request.decimals}</dtel:decimals>' if request.decimals else ''}
-        </dtel:dataElement>"""
+
+  
+        return  ( 
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<blue:wbobj xmlns:adtcore="http://www.sap.com/adt/core" xmlns:blue="http://www.sap.com/wbobj/dictionary/dtel" '
+            'adtcore:description="' f'{sanitize_for_xml(request.description)}' '" '
+            'adtcore:language="EN" adtcore:name="' f'{sanitize_for_xml(request.name)}' '" adtcore:type="DTEL/DE" adtcore:masterLanguage="EN">'
+            '<adtcore:packageRef adtcore:type="DEVC/K" adtcore:name="' f'{sanitize_for_xml(request.package_name)}' '"/>'
+            '<dtel:dataElement xmlns:dtel="http://www.sap.com/adt/dictionary/dataelements">'
+            '<dtel:typeKind>' f'{"domain" if request.domain_name else "predefinedAbapType"}' '</dtel:typeKind>'
+            '<dtel:typeName/>'
+            '<dtel:dataType>' f'{sanitize_for_xml(request.data_type)}' '</dtel:dataType>'
+            '<dtel:dataTypeLength>' f'{request.length}' '</dtel:dataTypeLength>'
+            '<dtel:dataTypeDecimals>' f'{request.decimals}' '</dtel:dataTypeDecimals>'
+            '<dtel:shortFieldLabel>' f'{sanitize_for_xml(request.field_labels.get("short"))}' '</dtel:shortFieldLabel>'
+            '<dtel:shortFieldLength/>'
+            '<dtel:shortFieldMaxLength/>'
+            '<dtel:mediumFieldLabel>' f'{sanitize_for_xml(request.field_labels.get("medium"))}' '</dtel:mediumFieldLabel>'
+            '<dtel:mediumFieldLength/>'
+            '<dtel:mediumFieldMaxLength/>'
+            '<dtel:longFieldLabel>' f'{sanitize_for_xml(request.field_labels.get("long"))}' '</dtel:longFieldLabel>'
+            '<dtel:longFieldLength/>'
+            '<dtel:longFieldMaxLength/>'
+            '<dtel:headingFieldLabel>' f'{sanitize_for_xml(request.field_labels.get("heading"))}' '</dtel:headingFieldLabel>'
+            '<dtel:headingFieldLength/>'
+            '<dtel:headingFieldMaxLength/>'
+            '<dtel:searchHelp/>'
+            '<dtel:searchHelpParameter/>'
+            '<dtel:setGetParameter/>'
+            '<dtel:defaultComponentName/>'
+            '<dtel:deactivateInputHistory>false</dtel:deactivateInputHistory>'
+            '<dtel:changeDocument>false</dtel:changeDocument>'
+            '<dtel:leftToRightDirection>false</dtel:leftToRightDirection>'
+            '<dtel:deactivateBIDIFiltering>false</dtel:deactivateBIDIFiltering>'
+            '</dtel:dataElement>'
+            '</blue:wbobj>'
+        )
     
     async def get_domains(self, package_name: Optional[str] = None) -> List[DomainInfo]:
         """Get domains from SAP system"""
@@ -7459,7 +7586,7 @@ class SAPADTClient:
             bdef_analysis = await self.analyze_behavior_definition(behavior_definition)
             
             # Use the standard create_object flow with BIMPL type
-            from sap_types.sap_types import CreateObjectRequest, ObjectType
+            
             request = CreateObjectRequest(
                 name=name,
                 type=ObjectType.BIMPL,

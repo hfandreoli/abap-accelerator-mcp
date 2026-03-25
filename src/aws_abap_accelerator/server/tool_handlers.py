@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 from sap.sap_client import SAPADTClient
 from sap.class_handler import ClassDefinition, MethodDefinition
 from sap_types.sap_types import (
-    CreateObjectRequest, ATCCheckArgs, ObjectType, BindingType
+    CreateObjectRequest, ATCCheckArgs, ObjectType, BindingType, CreateDataElementRequest
 )
 from utils.logger import rap_logger
 from utils.security import sanitize_for_logging, validate_numeric_input
@@ -123,9 +123,14 @@ class ToolHandlers:
             # Handle enhanced class creation
             if object_type == 'CLAS' and (args.get('methods') or args.get('interfaces') or args.get('is_test_class')):
                 return await self._handle_enhanced_class_creation(args)
-            
-            # Handle standard object creation
-            result_message = await self._handle_standard_object_creation(args)
+
+            if object_type == 'DTEL':
+              result_message = await self._handle_data_element_creation(args)
+
+            else:
+
+              # Handle standard object creation
+              result_message = await self._handle_standard_object_creation(args)
             
             # If object was created successfully and transport_request is provided, check assignment
             if args.get('transport_request') and "✅" in result_message:
@@ -252,6 +257,45 @@ class ToolHandlers:
             )
             
             result = await self.sap_client.create_object_with_syntax_check(request)
+            
+            return self._format_object_operation_result(args['name'], result, is_creation=True)
+            
+        except Exception as e:
+            logger.error(f"Error in standard object creation: {sanitize_for_logging(str(e))}")
+            return f"Error in standard object creation: {sanitize_for_logging(str(e))}"
+
+    async def _handle_data_element_creation(self, args: Dict[str, Any]) -> str:
+        """Handle data element creation"""
+        try:
+            # Ensure package_name is set (default to $TMP if not provided)
+            package_name = args.get('package_name') or "$TMP"
+            args['package_name'] = package_name  # Update args to ensure consistency
+            
+            # Map string type to ObjectType enum
+            object_type_str = args['type']
+            try:
+                object_type = ObjectType(object_type_str)
+            except ValueError:
+                return f"Invalid object type: {sanitize_for_logging(object_type_str)}"
+            
+            request = CreateDataElementRequest(
+                name=args['name'],
+                description=args['description'],
+                package_name=package_name,  # Use the ensured package_name
+                data_type=args.get('data_type'),
+                domain_name=args.get('domain_name'),
+                length=args.get('length'),
+                decimals=args.get('decimals'),
+                field_labels={
+                    'short': args.get('short_label'),
+                    'medium': args.get('medium_label'),
+                    'long': args.get('long_label'),
+                    'heading': args.get('heading_label')
+                },
+                transport_request=args.get('transport_request')
+            )
+            
+            result = await self.sap_client.create_data_element(request)
             
             return self._format_object_operation_result(args['name'], result, is_creation=True)
             
