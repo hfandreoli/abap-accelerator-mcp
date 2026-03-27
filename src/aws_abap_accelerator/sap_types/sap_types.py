@@ -8,6 +8,78 @@ from pydantic import BaseModel
 from enum import Enum
 
 
+
+class ObjectType(str, Enum):
+    PROG = "PROG"
+    PROG_P = "PROG/P"
+    PROG_I = "PROG/I"
+    CLAS = "CLAS"
+    INTF = "INTF"
+    FUGR = "FUGR"
+    DTEL = "DTEL"
+    TABL = "TABL"
+    STRU = "STRU"
+    DDLS = "DDLS"
+    BDEF = "BDEF"
+    BIMPL = "BIMPL"
+    SRVD = "SRVD"
+    SRVB = "SRVB"
+    # Enhancement types
+    ENHOXH = "ENHOXH"    # Enhancement Implementation
+    ENHOXHB = "ENHOXHB"  # BAdI Implementation
+    ENHOXHH = "ENHOXHH"  # Source Code Plugin
+    ENHSXS = "ENHSXS"    # Enhancement Spot
+    ENHSXSB = "ENHSXSB"  # BAdI Enhancement Spot
+    # DDIC types
+    DOMA = "DOMA"        # Domain
+    TTYP = "TTYP"        # Table Type
+    SHLP = "SHLP"        # Search Help
+    VIEW = "VIEW"        # View
+    MCID = "MCID"        # Matchcode ID
+    ENQU = "ENQU"        # Lock Object
+    XINX = "XINX"        # Extension Index
+    TABLDTI = "TABLDTI"  # Table Index
+    TABLDTT = "TABLDTT"  # Technical Table Settings
+
+
+class ADTAPICallResponse(BaseModel):
+    """Response from ADT API call"""
+    success: bool
+    data: Optional[Any] = None
+    error: Optional[str] = None
+    status_code: Optional[int] = None
+
+
+class ADTCreateRequest(BaseModel):
+    """ADT creation request"""
+    name: str
+    type: str
+    uri: str
+    content_type: str
+    data: str
+    package_name: Optional[str] = None
+    transport_request: Optional[str] = None
+
+
+class BaseObjectRequest(BaseModel):
+    """Create object request"""
+    name: str
+    type: str
+    description: str
+    package_name: Optional[str] = None  # Optional - defaults to $TMP if not provided
+    source_code: Optional[str] = None
+    transport_request: Optional[str] = None
+
+
+class DataElementRequest(BaseObjectRequest):
+    """Create data element request"""
+    domain_name: Optional[str] = None
+    data_type: Optional[str] = None
+    length: Optional[int] = None
+    decimals: Optional[int] = None
+    field_labels: Optional[Dict[str, str]] = None
+
+
 class AuthType(str, Enum):
     BASIC = "basic"
     CERTIFICATE = "certificate"
@@ -189,39 +261,6 @@ class UnitTestResult(BaseModel):
     status: Literal["SUCCESS", "FAILURE", "ERROR"]
     message: Optional[str] = None
     duration: Optional[float] = None
-
-
-class ObjectType(str, Enum):
-    PROG = "PROG"
-    PROG_P = "PROG/P"
-    PROG_I = "PROG/I"
-    CLAS = "CLAS"
-    INTF = "INTF"
-    FUGR = "FUGR"
-    DTEL = "DTEL"
-    TABL = "TABL"
-    STRU = "STRU"
-    DDLS = "DDLS"
-    BDEF = "BDEF"
-    BIMPL = "BIMPL"
-    SRVD = "SRVD"
-    SRVB = "SRVB"
-    # Enhancement types
-    ENHOXH = "ENHOXH"    # Enhancement Implementation
-    ENHOXHB = "ENHOXHB"  # BAdI Implementation
-    ENHOXHH = "ENHOXHH"  # Source Code Plugin
-    ENHSXS = "ENHSXS"    # Enhancement Spot
-    ENHSXSB = "ENHSXSB"  # BAdI Enhancement Spot
-    # DDIC types
-    DOMA = "DOMA"        # Domain
-    TTYP = "TTYP"        # Table Type
-    SHLP = "SHLP"        # Search Help
-    VIEW = "VIEW"        # View
-    MCID = "MCID"        # Matchcode ID
-    ENQU = "ENQU"        # Lock Object
-    XINX = "XINX"        # Extension Index
-    TABLDTI = "TABLDTI"  # Table Index
-    TABLDTT = "TABLDTT"  # Technical Table Settings
 
 
 class BindingType(str, Enum):

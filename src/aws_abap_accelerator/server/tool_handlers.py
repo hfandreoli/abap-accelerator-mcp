@@ -7,6 +7,9 @@ import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 
+from sap.base_object_handler import BaseObjectHandler
+from sap.data_element_handler import DataElementHandler
+from sap.sap_client_v2 import SAPADTClient2
 from sap.sap_client import SAPADTClient
 from sap.class_handler import ClassDefinition, MethodDefinition
 from sap_types.sap_types import (
@@ -24,6 +27,7 @@ class ToolHandlers:
     
     def __init__(self, sap_client: SAPADTClient):
         self.sap_client = sap_client
+        self.sap_client2 = SAPADTClient2(sap_client.connection, self.sap_client)  # For new API calls, while maintaining compatibility with existing client
     
     async def _ensure_connected(self) -> bool:
         """Ensure SAP client is connected"""
@@ -186,6 +190,44 @@ class ToolHandlers:
         except Exception as e:
             logger.error(f"Error creating object: {sanitize_for_logging(str(e))}")
             return f"Error creating object: {sanitize_for_logging(str(e))}"
+
+    async def handle_create_object_v2(self, args: Dict[str, Any]) -> str:
+        """Handle create object request"""
+        try:
+            await self._ensure_connected()  
+
+            object_name = args.get('name', '')
+            object_type = args.get('type', '')
+            package_name = args.get('package_name') or "$TMP"  # Default to $TMP if not provided
+            
+            logger.info(f"Creating object {sanitize_for_logging(object_name)} ({sanitize_for_logging(object_type)}) in package {sanitize_for_logging(package_name)}")
+            
+            rap_logger.object_creation(
+                sanitize_for_logging(object_name),
+                sanitize_for_logging(object_type),
+                sanitize_for_logging(package_name),
+                'MCP_REQUEST_RECEIVED',
+                {
+                    'has_source_code': bool(args.get('source_code')),
+                    'has_methods': bool(args.get('methods')),
+                    'is_test_class': bool(args.get('is_test_class')),
+                    'interfaces': len(args.get('interfaces') or []),
+                    'service_definition': args.get('service_definition'),
+                    'binding_type': args.get('binding_type'),
+                    'is_tmp_package': package_name.upper() == "$TMP"
+                }
+            )
+            
+            object_handler = BaseObjectHandler.get_handler(self.sap_client2, object_type)
+            result = await object_handler.create(args)
+            
+            tool_response = f"Object created successfully!" if result.created else f"Object creation failed: {result.errors[0].message if result.errors else 'Unknown error'}"
+            
+            return tool_response
+            
+        except Exception as e:
+            logger.error(f"Error creating object: {sanitize_for_logging(str(e))}")
+            return f"Error creating object: {sanitize_for_logging(str(e))}"
     
     async def _handle_enhanced_class_creation(self, args: Dict[str, Any]) -> str:
         """Handle enhanced class creation with methods and interfaces"""
@@ -312,9 +354,14 @@ class ToolHandlers:
             
             # Ensure we're connected to SAP
             if not await self._ensure_connected():
-                return f"❌ Failed to connect to SAP system. Please check your configuration and network connectivity."
+                return {"content": [{"type": "text", "text": f"❌ Failed to connect to SAP system. Please check your configuration and network connectivity."}]}
             
-            source = await self.sap_client.get_source(object_name, object_type)
+            if object_type.upper() == 'DTEL':
+                object_handler = DataElementHandler(self.sap_client2)
+                source = await object_handler.get_info(object_name)
+            else:
+                source = await self.sap_client.get_source(object_name, object_type)
+
             print(f"[MCP-SERVER] getSource result:", 'SUCCESS' if source else 'FAILED')
             
             if not source:
@@ -365,6 +412,73 @@ class ToolHandlers:
 - Check if the object is locked by another user
 - Verify the object is in an active state
 - Contact your SAP administrator if the issue persists"""
+            
+            return {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": error_message
+                    }
+                ]
+            }
+
+    async def handle_get_object_info(self, object_name: str, object_type: str) -> Dict[str, Any]:
+        """Handle get object information request (for tables, views, data elements, domains)"""
+
+        try:
+            # Add console-style logging to match TypeScript version
+            print(f"[MCP-SERVER] handleGetObjectInfo called for {sanitize_for_logging(object_name)} ({sanitize_for_logging(object_type)})")
+            logger.info(f"Getting information for {sanitize_for_logging(object_name)}")
+            
+            object_handler = BaseObjectHandler.get_handler(self.sap_client2, object_type)
+            obj_info = await object_handler.get_info(object_name)
+ 
+
+            print(f"[MCP-SERVER] getInfo result:", 'SUCCESS' if obj_info else 'FAILED')
+            
+            if not obj_info:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Could not retrieve information for {sanitize_for_logging(object_name)}"
+                        }
+                    ]
+                }
+            
+            tool_response = {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"{obj_info}"
+                        }
+                    ]
+                }
+            
+            return tool_response
+            
+        except Exception as e:
+            print(f"[MCP-SERVER] Error in handleGetObjectInfo: {sanitize_for_logging(str(e))}")
+            logger.error(f"Error getting object info: {sanitize_for_logging(str(e))}")
+            
+            # Enhanced error response with troubleshooting guidance
+            error_message = f"""❌ Error retrieving object info for {sanitize_for_logging(object_name)}
+
+                              🔍 **Error Details:**
+                              {sanitize_for_logging(str(e))}
+
+                              🛠️ **Troubleshooting Steps:**
+                              1. **Check Connection**: Verify SAP system connectivity
+                              2. **Object Exists**: Confirm {sanitize_for_logging(object_name)} exists in the system
+                              3. **Permissions**: Ensure you have read access to the object
+                              4. **Object Type**: Verify {sanitize_for_logging(object_type)} is the correct type
+                              5. **System Load**: SAP system may be under heavy load
+
+                              💡 **Alternative Actions:**
+                              - Try accessing the object through SAP GUI (SE80/SE24/SE38)
+                              - Check if the object is locked by another user
+                              - Verify the object is in an active state
+                              - Contact your SAP administrator if the issue persists"""
             
             return {
                 "content": [

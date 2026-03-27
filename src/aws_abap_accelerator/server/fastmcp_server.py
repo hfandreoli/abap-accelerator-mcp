@@ -169,7 +169,7 @@ class ABAPAcceleratorServer:
             Returns:
                 Success/error message
             """
-            return await self.tool_handlers.handle_create_object({
+            return await self.tool_handlers.handle_create_object_v2({
                 'name': name,
                 'type': 'DTEL',
                 'description': description,
@@ -193,9 +193,9 @@ class ABAPAcceleratorServer:
 
         # Get source tool
         @self.mcp.tool()
-        async def aws_abap_cb_get_data_element_info(object_name: str, object_type: str, explanation: Optional[str] = None) -> Dict[str, Any]:
-            """Get source code of a Data Elemeent"""
-            return await self.tool_handlers.handle_get_source(object_name, object_type)
+        async def aws_abap_cb_get_dictionary_object_info(object_name: str, object_type: str, explanation: Optional[str] = None) -> Dict[str, Any]:
+            """Get dictionary information of ABAP object (tables, views, data elements, domains)"""
+            return await self.tool_handlers.handle_get_object_info(object_name, object_type)
         
         # Update source tool
         @self.mcp.tool()
