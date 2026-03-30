@@ -28,6 +28,7 @@ class BaseObjectHandler:
         else:
             return BaseObjectHandler(sap_client)
 
+
     async def get_info(self, object_name: str) -> Dict[str, Any]:
         """Get detailed object information"""
        
@@ -37,8 +38,9 @@ class BaseObjectHandler:
 
         retunr_obj = self._parse_info_response(response.data)
 
-        return retunr_obj.dict() if retunr_obj else {}
+        return retunr_obj.model_dump() if retunr_obj else {}
                     
+
     async def create(self, args: Dict[str, Any]) -> ObjectOperationResult:
 
         object_request = self._parse_input_type_args(args)
@@ -77,18 +79,53 @@ class BaseObjectHandler:
         logger.info(f"Sending create request for {sanitize_for_logging(create_request.name)}")
         return await self.sap_client.create(create_request)
 
+
+    async def update(self, args: Dict[str, Any]) -> ObjectOperationResult:
+
+        existing_object_info = await self.get_info(args.get('name', ''))
+
+        if not existing_object_info:
+            logger.error(f"Object {sanitize_for_logging(args.get('name', ''))} not found for update")
+            raise Exception(f"Object {sanitize_for_logging(args.get('name', ''))} not found for update")
+
+        object_request = self._build_update_object(existing_object_info, args)
+
+        logger.info(f"Updating object {sanitize_for_logging(object_request.name)} type {sanitize_for_logging(object_request.type)} in package {sanitize_for_logging(object_request.package_name)}")
+
+        create_request = ADTCreateRequest(
+            name=object_request.name,
+            type=object_request.type,
+            uri=self._get_type_uri(),
+            content_type=self._get_content_type(),
+            package_name=object_request.package_name,
+            data=self._build_object_xml(object_request)
+        )
+
+        logger.info(f"Sending update request for {sanitize_for_logging(create_request.name)}")
+
+        return await self.sap_client.update(create_request)
+
+
     def _get_type_uri(self):
         raise NotImplementedError("Subclasses must implement this method")
     
+
     def _get_content_type(self):
         raise NotImplementedError("Subclasses must implement this method")
     
+
     def _parse_info_response(self, xml_content: str) -> BaseModel:
         raise NotImplementedError("Subclasses must implement this method")
     
+
     def _parse_input_type_args(self, args: Dict[str, Any]) -> BaseModel:
         raise NotImplementedError("Subclasses must implement this method")
     
+
     def _build_object_xml(self, object_request: BaseModel) -> str:
+        raise NotImplementedError("Subclasses must implement this method")
+    
+
+    def _build_update_object(self, existing_info: Dict[str, Any], update_args: Dict[str, Any]) -> BaseModel:
         raise NotImplementedError("Subclasses must implement this method")
     

@@ -95,10 +95,10 @@ class DataElementHandler(BaseObjectHandler):
 
     def _parse_input_type_args(self, args: Dict[str, Any]) -> DataElementRequest:
         return DataElementRequest(
-            name=args.get('name', ''),
-            type=args.get('type', ''),
-            description=args.get('description', ''),
-            package_name=args.get('package_name', '') or '$TMP',
+            name=args.get('name'),
+            type='DTEL',
+            description=args.get('description'),
+            package_name=args.get('package_name') or '$TMP',
             data_type=args.get('data_type'),
             domain_name=args.get('domain_name'),
             length=args.get('length'),
@@ -111,7 +111,7 @@ class DataElementHandler(BaseObjectHandler):
             }
           )
     
-    def _build_object_xml(self, object_request: DataElementInfo) -> str:
+    def _build_object_xml(self, object_request: DataElementRequest) -> str:
         return  ( 
             '<?xml version="1.0" encoding="UTF-8"?>'
             '<blue:wbobj xmlns:adtcore="http://www.sap.com/adt/core" xmlns:blue="http://www.sap.com/wbobj/dictionary/dtel" '
@@ -126,16 +126,16 @@ class DataElementHandler(BaseObjectHandler):
             '<dtel:dataTypeDecimals>' f'{object_request.decimals or ""}' '</dtel:dataTypeDecimals>'
             '<dtel:shortFieldLabel>' f'{sanitize_for_xml(object_request.field_labels.get("short"))}' '</dtel:shortFieldLabel>'
             '<dtel:shortFieldLength/>'
-            '<dtel:shortFieldMaxLength/>'
+            '<dtel:shortFieldMaxLength>10</dtel:shortFieldMaxLength>'
             '<dtel:mediumFieldLabel>' f'{sanitize_for_xml(object_request.field_labels.get("medium"))}' '</dtel:mediumFieldLabel>'
             '<dtel:mediumFieldLength/>'
-            '<dtel:mediumFieldMaxLength/>'
+            '<dtel:mediumFieldMaxLength>20</dtel:mediumFieldMaxLength>'
             '<dtel:longFieldLabel>' f'{sanitize_for_xml(object_request.field_labels.get("long"))}' '</dtel:longFieldLabel>'
             '<dtel:longFieldLength/>'
-            '<dtel:longFieldMaxLength/>'
+            '<dtel:longFieldMaxLength>40</dtel:longFieldMaxLength>'
             '<dtel:headingFieldLabel>' f'{sanitize_for_xml(object_request.field_labels.get("heading"))}' '</dtel:headingFieldLabel>'
             '<dtel:headingFieldLength/>'
-            '<dtel:headingFieldMaxLength/>'
+            '<dtel:headingFieldMaxLength>55</dtel:headingFieldMaxLength>'
             '<dtel:searchHelp/>'
             '<dtel:searchHelpParameter/>'
             '<dtel:setGetParameter/>'
@@ -147,4 +147,24 @@ class DataElementHandler(BaseObjectHandler):
             '</dtel:dataElement>'
             '</blue:wbobj>'
         )
-    
+
+
+    def _build_update_object(self, existing_info: Dict[str, Any], update_args: Dict[str, Any]) -> DataElementRequest:
+        update_data = self._parse_input_type_args(update_args)
+
+        return DataElementRequest(
+            name=update_data.name if update_data.name is not None else existing_info.get('name', ''),
+            type='DTEL',
+            description=update_data.description if update_data.description is not None else existing_info.get('description', ''),
+            package_name=update_data.package_name if update_data.package_name is not None else existing_info.get('package_name', ''),
+            data_type=update_data.data_type if update_data.data_type is not None else existing_info.get('data_type', ''),
+            domain_name=update_data.domain_name if update_data.domain_name is not None else existing_info.get('domain_name', ''),
+            length=update_data.length if update_data.length is not None else existing_info.get('length', ''),
+            decimals=update_data.decimals if update_data.decimals is not None else existing_info.get('decimals', ''),
+            field_labels= {
+                'short': update_data.field_labels.get('short') if update_data.field_labels.get('short') is not None else existing_info.get('field_labels', {}).get('short'),
+                'medium': update_data.field_labels.get('medium') if update_data.field_labels.get('medium') is not None else existing_info.get('field_labels', {}).get('medium'),
+                'long': update_data.field_labels.get('long') if update_data.field_labels.get('long') is not None else existing_info.get('field_labels', {}).get('long'),
+                'heading': update_data.field_labels.get('heading') if update_data.field_labels.get('heading') is not None else existing_info.get('field_labels', {}).get('heading'),
+            }
+        )

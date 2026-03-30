@@ -228,7 +228,47 @@ class ToolHandlers:
         except Exception as e:
             logger.error(f"Error creating object: {sanitize_for_logging(str(e))}")
             return f"Error creating object: {sanitize_for_logging(str(e))}"
+
     
+    async def handle_update_object(self, args: Dict[str, Any]) -> str:
+        """Handle update object request"""
+        try:
+            await self._ensure_connected()  
+
+            object_name = args.get('name', '')
+            object_type = args.get('type', '')
+            package_name = args.get('package_name') or "$TMP"  # Default to $TMP if not provided
+            
+            logger.info(f"Creating object {sanitize_for_logging(object_name)} ({sanitize_for_logging(object_type)}) in package {sanitize_for_logging(package_name)}")
+            
+            # rap_logger.object_creation(
+            #     sanitize_for_logging(object_name),
+            #     sanitize_for_logging(object_type),
+            #     sanitize_for_logging(package_name),
+            #     'MCP_REQUEST_RECEIVED',
+            #     {
+            #         'has_source_code': bool(args.get('source_code')),
+            #         'has_methods': bool(args.get('methods')),
+            #         'is_test_class': bool(args.get('is_test_class')),
+            #         'interfaces': len(args.get('interfaces') or []),
+            #         'service_definition': args.get('service_definition'),
+            #         'binding_type': args.get('binding_type'),
+            #         'is_tmp_package': package_name.upper() == "$TMP"
+            #     }
+            # )
+            
+            object_handler = BaseObjectHandler.get_handler(self.sap_client2, object_type)
+            result = await object_handler.update(args)
+            
+            tool_response = f"Object updated successfully!" if result.updated else f"Object update failed: {result.errors[0].message if result.errors else 'Unknown error'}"
+            
+            return tool_response
+            
+        except Exception as e:
+            logger.error(f"Error updating object: {sanitize_for_logging(str(e))}")
+            return f"Error updating object: {sanitize_for_logging(str(e))}"
+    
+
     async def _handle_enhanced_class_creation(self, args: Dict[str, Any]) -> str:
         """Handle enhanced class creation with methods and interfaces"""
         try:
@@ -345,6 +385,7 @@ class ToolHandlers:
             logger.error(f"Error in standard object creation: {sanitize_for_logging(str(e))}")
             return f"Error in standard object creation: {sanitize_for_logging(str(e))}"
     
+
     async def handle_get_source(self, object_name: str, object_type: str) -> Dict[str, Any]:
         """Handle get source request"""
         try:

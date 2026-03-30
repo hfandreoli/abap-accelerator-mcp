@@ -120,4 +120,63 @@ class SAPADTClient2:
   
       except Exception as e:
           raise Exception(f"Error creating in URL: {sanitize_for_logging(str(e))}")
+      
+
+  async def update(self, request: ADTCreateRequest) -> ObjectOperationResult:
+      try:
+          print(f"[SAP-CLIENT] Trying to update with URL: {sanitize_for_logging(request.uri)}/{sanitize_for_logging(request.name)}")
+          logger.info(f"Trying to update with URL: {sanitize_for_logging(request.uri)}/{sanitize_for_logging(request.name)}")
+
+          await self.v1_client._ensure_session_valid()
+
+          url = request.uri + '/' + request.name
+
+          lock_info = await self.v1_client._lock_object(url)
+
+          if not lock_info:
+                raise Exception("Failed to lock object for update")
+          
+          logger.info(f"Object locked successfully")
+
+          params = {"lockHandle": lock_info.get('LOCK_HANDLE')} if lock_info.get('LOCK_HANDLE') else {}
+
+          if lock_info.get('CORRNR'):
+              params["corrNr"] = lock_info['CORRNR']
+                  
+          headers = await self.v1_client._get_appropriate_headers()
+          headers['Accept'] = '*/*'
+          headers['Content-Type'] = request.content_type
+
+          # Ensure we have CSRF token and cookies
+          if self.v1_client.csrf_token:
+              headers['X-CSRF-Token'] = self.v1_client.csrf_token
+                        
+          async with self.v1_client.session.put(url, headers=headers, data=request.data, params=params) as response:
+              xml_content = await response.text()
+              if response.status in [200, 204]:
+                  logger.info(f"Successfully updated object {sanitize_for_logging(request.name)}")
+  
+              else:
+                  logger.error(f"Failed to update with URL: {response.status}")
+                  logger.error(xml_content)
+                  return ObjectOperationResult(
+                      created=False,
+                      syntax_check_passed=False,
+                      activated=False,
+                      errors=[SAPSyntaxError(line=0, message=f"HTTP {response.status}: {xml_content[:200]}", severity='ERROR')],
+                      warnings=[]
+              )
+                  
+          activation_result = await self.v1_client._activate_object_with_details(request.name, request.type)
+              
+          return ObjectOperationResult(
+                  created=True,
+                  syntax_check_passed=activation_result.activated,
+                  activated=activation_result.activated,
+                  errors=activation_result.errors,
+                  warnings=activation_result.warnings
+              )
+  
+      except Exception as e:
+          raise Exception(f"Error creating in URL: {sanitize_for_logging(str(e))}")
     
